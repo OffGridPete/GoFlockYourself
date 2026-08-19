@@ -142,6 +142,7 @@ GoFlockYourself/
   platformio.ini          # CYD + TFT_eSPI pins
   partitions.csv
   README.md
+  LICENSE                 # MIT
   docs/                   # technical PDF + page previews
   include/
     config.h              # pins, defaults, timing
@@ -190,6 +191,12 @@ Some CYD batches need X/Y swap — adjust `read_touch()` in `ui.cpp` if inverted
 - **colonelpanichacks / flock-you** — promiscuous pipeline reference
 - **GainSec** — Raven BLE UUID research
 - IEEE MA-L **B4:1E:52** registered to Flock Safety
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ---
 
