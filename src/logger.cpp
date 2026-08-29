@@ -103,7 +103,9 @@ static bool sd_append_one_line(const char *line) {
   if (s_release) s_release();
   delay(5);
 
-  // Map VSPI to SD padout
+  // Map VSPI to SD padout. end() first — SPIClass::begin() returns early when
+  // _spi is already set, so a bare begin() would not re-pin the bus.
+  s_sd_spi.end();
   s_sd_spi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
   delay(5);
 
@@ -192,6 +194,7 @@ bool logger_sd_probe() {
   pins_idle();
   if (s_release) s_release();
   delay(5);
+  s_sd_spi.end();
   s_sd_spi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
   delay(5);
   bool ok = SD.begin(SD_CS, s_sd_spi, SD_SPI_HZ);

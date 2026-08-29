@@ -719,6 +719,10 @@ void ui_spi_release_for_sd() {
   // Deselect touch chip; logger will re-pin VSPI onto SD pads
   pinMode(TOUCH_CS, OUTPUT);
   digitalWrite(TOUCH_CS, HIGH);
+  // Release the bus so the reclaim-side begin() can actually re-pin it.
+  // SPIClass::begin() returns early when _spi is already set, so without this
+  // end() the reclaim below is a silent no-op and touch never comes back.
+  touchSPI.end();
 }
 
 void ui_spi_reclaim_after_sd() {
