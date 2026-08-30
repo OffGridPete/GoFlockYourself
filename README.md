@@ -8,6 +8,19 @@ Modern dark UI on the built-in 2.8″ ILI9341 touchscreen. Primary detection is 
 
 ---
 
+## Safety & disclaimer
+
+This is a hobby project, shared as-is for anyone who wants to build their own version. A few things to know before you do:
+
+* **LiPo batteries:** incorrect wiring, reverse polarity, or physical damage to a LiPo cell can cause fire. Double-check polarity yourself before powering anything on, use a charging module rated for the cell you're using, and never leave a charging LiPo unattended.
+* **RF hardware:** the radio modules in this project operate according to their respective regulatory approvals (e.g. CE) for their intended region — verify this applies to your location before use.
+* **No warranty:** this repository (firmware, wiring diagrams, enclosures, scripts, and this README) is provided without any warranty, express or implied. Verify every connection yourself before applying power — don't assume the diagrams or code here are free of mistakes.
+* **Use at your own risk:** building and operating this project is entirely your own responsibility. The author assumes no liability for damage, injury, or loss resulting from building or using this project.
+
+If you spot an error in the docs, wiring, or code, please open an issue — corrections are welcome.
+
+---
+
 ## Documentation
 
 - [Technical documentation (Markdown)](docs/GoFlockYourself_Technical_Documentation.md)
