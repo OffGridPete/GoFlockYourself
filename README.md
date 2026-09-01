@@ -59,7 +59,7 @@ pio run -e cyd -t upload
 pio device monitor -b 115200
 ```
 
-Requirements: [PlatformIO](https://platformio.org/) Core or VS Code extension.
+Requirements: [PlatformIO](https://platformio.org/) Core or VS Code extension. The build is pinned to **Arduino-ESP32 2.0.17** (`espressif32 @ 6.10.0`). Arduino 3.x / pioarduino is not supported (`SPIFFS.h` missing, NimBLE-Arduino 1.4.3 will not compile). If `pio run -e cyd` pulls a `2024.*` platform, you have pioarduino installed — use the pin in `platformio.ini`, then `pio run -e cyd -t clean && pio run -e cyd`.
 
 Libraries (pulled automatically):
 
