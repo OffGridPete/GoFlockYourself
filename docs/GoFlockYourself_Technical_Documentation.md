@@ -6,8 +6,8 @@ GoFlockYourself
 Passive Flock Safety Camera Detector
 for the Cheap Yellow Display (ESP32-2432S028R)
 Technical Documentation
-Version 1.0.0
-12 August 2026
+Version 1.1.0
+5 September 2026
 By @OffGridPete
 A production-oriented firmware and field guide for passively detecting Flock Safety and related automatic license
 plate reader (ALPR) infrastructure using WiFi promiscuous mode, OUI fingerprinting, wildcard probe requests,
@@ -17,7 +17,7 @@ and optional Bluetooth Low Energy scanning — all on a low-cost ESP32 touchscre
 ---
 
 <!-- page 2 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 2
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -40,7 +40,7 @@ Appendix C — File Map
 ---
 
 <!-- page 3 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 3
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -85,7 +85,7 @@ addr2 (transmitter) and addr1 (receiver) matching
 ---
 
 <!-- page 4 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 4
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -123,7 +123,7 @@ and the broader DeFlock mapping community. See Section 10 for the full acknowled
 ---
 
 <!-- page 5 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 5
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -172,7 +172,7 @@ Prefer wildcard+OUI; disable Broad OUI
 ---
 
 <!-- page 6 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 6
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -193,7 +193,7 @@ Leave BLE off unless needed
 ---
 
 <!-- page 7 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 7
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -205,7 +205,7 @@ Specification
 MCU
 Espressif ESP32-WROOM-32 (dual-core, 240 MHz, WiFi + BT)
 Display
-2.8″ ILI9341 TFT, 240 × 320 portrait
+2.8″ ILI9341 TFT, 240 × 320 portrait (some lots invert; see 4.3 / 5.4)
 Touch
 XPT2046 resistive touchscreen
 Storage slot
@@ -249,7 +249,7 @@ card, the firmware still operates fully; detections appear on-screen, in history
 ---
 
 <!-- page 8 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 8
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -268,13 +268,16 @@ hold the board’s BOOT button, tap RST, release BOOT, and retry. Close any othe
 port.
 4.3 First Boot
 After a successful flash the board should:
- Show a brief GoFlockYourself splash screen.
+ On a new board, show TAP THE DARK SIDE (split black/white). Tap whichever half looks dark. CYD
+panel lots disagree on invert; the controller cannot detect this. The choice is saved in NVS for that board.
+ Show a brief GoFlockYourself splash screen (v1.1.0).
  Enter the dark-themed Home / Status screen with LIVE scanning enabled.
  Pulse the RGB LED in a soft blue scanning pattern.
  Print a boot banner and configuration summary on USB serial at 115200 baud.
- Auto-detect a FAT32 microSD card if present and enable CSV logging.
-If the display remains blank, press RST once. Confirm serial output contains lines such as [wifi] SCAN start
-and a periodic [hb] heartbeat with a non-zero frame counter when near any 2.4 GHz WiFi activity.
+ Auto-detect a FAT32 microSD card if present and enable CSV logging (unless you previously saved logging off).
+If the whole UI looks washed-out white, open Main menu → Invert display (or Alerts) and toggle it. If the display
+remains blank, press RST once. Confirm serial output contains lines such as [wifi] SCAN start and a periodic
+[hb] heartbeat with a non-zero frame counter when near any 2.4 GHz WiFi activity.
 4.4 Basic Operation
  Leave the device scanning while walking or driving through an area of interest.
  Watch the Home screen for channel hops, hit counters, and last detection details.
@@ -296,7 +299,7 @@ Mains USB adapter; ensure ventilation; SD logging for unattended capture
 ---
 
 <!-- page 9 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 9
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -304,13 +307,14 @@ ESP32-2432S028R (CYD)
 5.1 Design Overview
 The UI is a custom dark theme on the 240×320 ILI9341 panel using TFT_eSPI, with resistive touch via XPT2046. The
 design prioritizes field readability: high contrast, large hit counters, and a prominent detection alert. Touch targets are
-full-width rows where possible to compensate for resistive imprecision.
+full-width rows where possible to compensate for resistive imprecision. Some CYD panel lots invert black/white; first
+boot calibration and the Invert display toggle keep the theme dark on every board.
 5.2 Home / Status Screen
 The Home screen is the primary operational view. It shows:
 Element
 Meaning
 Title + version
-Project identity (GoFlockYourself / v1.0.0)
+Project identity (GoFlockYourself / v1.1.0)
 LIVE / IDLE
 Whether WiFi promiscuous scanning is active
 Channel
@@ -346,17 +350,19 @@ Toggle promiscuous scan; LED returns to idle green when stopped
 Detection Methods
 Enable/disable individual RF detection paths
 Alerts & Sensitivity
-Audio, LED, SD logging, channel plan
+Audio, LED, SD logging, invert, channel plan
 View Log / History
 Paged on-device history of recent detections
 About / Credits
 Version, author, research credits, OUI count
+Invert display
+ON/OFF — corrects white-on-light panels; saved per board
 
 
 ---
 
 <!-- page 10 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 10
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -365,9 +371,9 @@ Each row is a toggle (ON/OFF). Changes take effect immediately for subsequent fr
 (TX), WiFi OUI (RX), Wildcard Probe, Broad OUI, SSID Keywords, and BLE Scanning (when compiled in). Channel
 plan summary is shown at the bottom for context.
 5.6 Alerts & Sensitivity Screen
-Toggles for Audio (buzzer), RGB LED alert, and SD logging. Live card status text reports whether a microSD is ready.
-Channel plan buttons select Primary (1/6/11), Full (1–13), or Ascending (1–11). See Section 7 for recommended
-profiles.
+Toggles for Audio (buzzer), RGB LED alert, SD logging, and Invert display. Live card status reports FAT32 ready,
+not inserted, not FAT32, or write error. Logging may be enabled while scanning. Channel plan buttons select Primary
+(1/6/11), Full (1–13), or Ascending (1–11). See Section 7 for recommended profiles.
 5.7 History Screen
 Shows up to 40 recent detections in RAM (most recent first), six per page. Each row lists method, full MAC, RSSI,
 and relative time. Prev appears only when a previous page exists; Next only when another page exists.
@@ -383,7 +389,7 @@ the visual alert when enabled.
 ---
 
 <!-- page 11 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 11
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -427,7 +433,7 @@ NitekryDPaul addr1 technique: nearby infrastructure talking to a Flock MAC revea
 ---
 
 <!-- page 12 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 12
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -471,7 +477,7 @@ Best practices
 ---
 
 <!-- page 13 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 13
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -530,7 +536,7 @@ Align with observed ascending probe hops
 ---
 
 <!-- page 14 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 14
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -544,6 +550,8 @@ RGB LED alert
 Flashes red on hit; soft blue pulse while scanning; green when idle
 SD logging
 Appends CSV rows when a FAT32 card is mounted (see Section 8)
+Invert display
+Flips panel invert so the dark UI stays dark on both CYD lots (saved in NVS)
 Channel plan
 Primary / Full / Asc — changes hop set immediately
 7.2 De-duplication / Cooldown
@@ -611,7 +619,7 @@ manually
 ---
 
 <!-- page 15 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 15
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -667,7 +675,7 @@ boot millis, not wall clock unless you note start time).
 ---
 
 <!-- page 16 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 16
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -679,7 +687,7 @@ still, avoid very rapid forced probes while touching the UI.
 ---
 
 <!-- page 17 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 17
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -724,14 +732,14 @@ make the list opaque.
 ---
 
 <!-- page 18 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 18
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
 10. Credits & References
 10.1 Project
-GoFlockYourself firmware and CYD interface — @OffGridPete and contributors. Version documented: 1.0.0 (12
-August 2026).
+GoFlockYourself firmware and CYD interface — @OffGridPete and contributors. Version documented: 1.1.0 (5
+September 2026).
 10.2 Research and Prior Art
 Contributor
 Contribution
@@ -766,7 +774,7 @@ verify legal context in your jurisdiction.
 ---
 
 <!-- page 19 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 19
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -811,7 +819,7 @@ Receiver addr1 OUI
 ---
 
 <!-- page 20 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 20
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -836,7 +844,7 @@ Reseat card; confirm FAT32; try another card
 ---
 
 <!-- page 21 -->
-GoFlockYourself  ·  Technical Documentation  ·  v1.0.0
+GoFlockYourself  ·  Technical Documentation  ·  v1.1.0
 21
 Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
@@ -868,5 +876,5 @@ RGB LED and piezo helpers
 README.md
 Quick-start companion to this document
 Document control
-Title: GoFlockYourself Technical Documentation · Version 1.0.0 · Date: 12 August 2026 · Audience: makers, privacy
+Title: GoFlockYourself Technical Documentation · Version 1.1.0 · Date: 5 September 2026 · Audience: makers, privacy
 researchers, and field auditors · Classification: public research aid.
