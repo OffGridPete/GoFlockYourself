@@ -19,6 +19,7 @@
 #include <TFT_eSPI.h>
 #include <XPT2046_Touchscreen.h>
 #include <SPI.h>
+#include <Preferences.h>
 #include <string.h>
 
 namespace gfy {
@@ -58,6 +59,43 @@ static uint32_t s_ignore_touch_until = 0;  // boot / post-SD ignore window
 static uint8_t s_hist_page = 0;
 static uint8_t s_alert_phase = 0;
 static uint32_t s_alert_anim = 0;
+
+static void apply_invert() {
+  tft.invertDisplay(settings().invert_display);
+}
+
+static void save_invert() {
+  Preferences p;
+  if (!p.begin("gfy", false)) return;
+  p.putBool("inv", settings().invert_display);
+  p.putBool("invset", true);
+  p.end();
+}
+
+static bool invert_calibrated() {
+  Preferences p;
+  if (!p.begin("gfy", true)) return false;
+  bool set = p.getBool("invset", false);
+  p.end();
+  return set;
+}
+
+static void load_invert() {
+  Preferences p;
+  if (!p.begin("gfy", true)) return;
+  if (p.getBool("invset", false)) {
+    settings().invert_display = p.getBool("inv", DEF_INVERT_DISPLAY);
+  }
+  p.end();
+}
+
+static void toggle_invert() {
+  settings().invert_display = !settings().invert_display;
+  apply_invert();
+  save_invert();
+  Serial.printf("[ui] invert display %s\n",
+                settings().invert_display ? "ON" : "OFF");
+}
 
 // ---------------------------------------------------------------------------
 // Geometry helpers
@@ -195,7 +233,9 @@ static void draw_home_full() {
     tft.setTextColor(C_DIM, C_PANEL);
     tft.drawString(frames, 92, 106, 1);
     tft.setTextDatum(MR_DATUM);
-    uint16_t sdcol = (sd[0] == 'r') ? C_OK : (sd[0] == 'e' ? C_ALERT : C_DIM);
+    uint16_t sdcol = C_DIM;
+    if (!strcmp(sd, "ready")) sdcol = C_OK;
+    else if (!strcmp(sd, "format") || !strcmp(sd, "error")) sdcol = C_ALERT;
     char sdbuf[20];
     snprintf(sdbuf, sizeof(sdbuf), "SD:%s", sd);
     tft.setTextColor(sdcol, C_PANEL);
@@ -278,10 +318,22 @@ static void refresh_home_status() {
   tft.setTextColor(C_ACCENT, C_PANEL);
   tft.drawString(buf, 92, 58, 1);
 
-  tft.fillRect(90, 98, 130, 14, C_PANEL);
+  tft.fillRect(90, 98, 70, 14, C_PANEL);
   snprintf(buf, sizeof(buf), "%lu", (unsigned long)stats().rx_frames);
   tft.setTextColor(C_DIM, C_PANEL);
   tft.drawString(buf, 92, 106, 1);
+  {
+    const char *sd = logger_sd_status();
+    tft.fillRect(160, 98, 70, 14, C_PANEL);
+    uint16_t sdcol = C_DIM;
+    if (!strcmp(sd, "ready")) sdcol = C_OK;
+    else if (!strcmp(sd, "format") || !strcmp(sd, "error")) sdcol = C_ALERT;
+    char sdbuf[20];
+    snprintf(sdbuf, sizeof(sdbuf), "SD:%s", sd);
+    tft.setTextDatum(MR_DATUM);
+    tft.setTextColor(sdcol, C_PANEL);
+    tft.drawString(sdbuf, TFT_W - 14, 106, 1);
+  }
 
   // Hit counters
   tft.fillRect(16, 146, 90, 28, C_PANEL);
@@ -335,9 +387,10 @@ static void draw_menu() {
   btn(16, 182, TFT_W - 32, 36, "View Log / History");
   btn(16, 228, TFT_W - 32, 36, "About / Credits");
 
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextColor(C_DIM, C_BG);
-  tft.drawString("Tap an option", TFT_W / 2, 300, 1);
+  char invlab[28];
+  snprintf(invlab, sizeof(invlab), "Invert display  %s",
+           cfg.invert_display ? "ON" : "OFF");
+  btn(16, 274, TFT_W - 32, 36, invlab, cfg.invert_display);
   Serial.println(F("[ui] MAIN MENU ready"));
 }
 
@@ -401,40 +454,26 @@ static void draw_alerts_cfg() {
   row(40,  "Audio (buzzer)", cfg.audio_alert);
   row(80,  "RGB LED alert",  cfg.led_alert);
   row(120, "SD logging",     cfg.sd_logging);
-
-  // Live card status under SD toggle
-  {
-    char buf[48];
-    const char *st = logger_sd_status();
-    if (strcmp(st, "ready") == 0) {
-      snprintf(buf, sizeof(buf), "Card: ready → %s", SD_LOG_PATH);
-    } else if (strcmp(st, "none") == 0) {
-      snprintf(buf, sizeof(buf), "Card: not inserted");
-    } else {
-      snprintf(buf, sizeof(buf), "Card: %s", st);
-    }
-    tft.setTextDatum(MC_DATUM);
-    tft.setTextColor(logger_sd_ok() ? C_OK : C_DIM, C_BG);
-    tft.drawString(buf, TFT_W / 2, 158, 1);
-  }
+  row(160, "Invert display", cfg.invert_display);
 
   // Channel plan buttons
-  panel(8, 176, TFT_W - 16, 70);
+  panel(8, 204, TFT_W - 16, 70);
   tft.setTextDatum(ML_DATUM);
   tft.setTextColor(C_DIM, C_PANEL);
-  tft.drawString("CHANNEL PLAN", 16, 190, 1);
-  btn(16,  204, 64, 28, "1/6/11", cfg.chan_plan == CHAN_PLAN_PRIMARY);
-  btn(88,  204, 64, 28, "Full",   cfg.chan_plan == CHAN_PLAN_FULL);
-  btn(160, 204, 64, 28, "Asc",    cfg.chan_plan == CHAN_PLAN_ASC);
+  tft.drawString("CHANNEL PLAN", 16, 218, 1);
+  btn(16,  232, 64, 28, "1/6/11", cfg.chan_plan == CHAN_PLAN_PRIMARY);
+  btn(88,  232, 64, 28, "Full",   cfg.chan_plan == CHAN_PLAN_FULL);
+  btn(160, 232, 64, 28, "Asc",    cfg.chan_plan == CHAN_PLAN_ASC);
 
-  // Cooldown / RSSI info
-  char buf[48];
-  snprintf(buf, sizeof(buf), "Cooldown %us  RSSI floor %d",
-           (unsigned)(cfg.alert_cooldown_ms / 1000), (int)cfg.rssi_floor);
+  const char *st = logger_sd_status();
+  uint16_t sdcol = C_DIM;
+  if (!strcmp(st, "ready")) sdcol = C_OK;
+  else if (!strcmp(st, "format") || !strcmp(st, "error")) sdcol = C_ALERT;
   tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(sdcol, C_BG);
+  tft.drawString(logger_sd_detail(), TFT_W / 2, 284, 1);
   tft.setTextColor(C_DIM, C_BG);
-  tft.drawString(buf, TFT_W / 2, 278, 1);
-  tft.drawString("Tap 1/6/11 · Full · Asc to switch", TFT_W / 2, 298, 1);
+  tft.drawString("Logging OK while scanning", TFT_W / 2, 304, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -647,6 +686,10 @@ static void handle_touch(int16_t x, int16_t y) {
       } else if (hit(x, y, 16, 228, TFT_W - 32, 36)) {
         Serial.println(F("[ui] menu: about"));
         go(SCR_ABOUT);
+      } else if (hit(x, y, 16, 274, TFT_W - 32, 36)) {
+        Serial.println(F("[ui] menu: invert display"));
+        toggle_invert();
+        s_need_full = true;
       }
       break;
 
@@ -670,18 +713,19 @@ static void handle_touch(int16_t x, int16_t y) {
       if (hit(x, y, 8, 40,  TFT_W - 16, 34)) { cfg.audio_alert = !cfg.audio_alert; s_need_full = true; }
       else if (hit(x, y, 8, 80,  TFT_W - 16, 34)) { cfg.led_alert = !cfg.led_alert; s_need_full = true; }
       else if (hit(x, y, 8, 120, TFT_W - 16, 34)) {
-        // Toggle only — do NOT probe SD here (SD.begin blocks and freezes UI)
-        cfg.sd_logging = !cfg.sd_logging;
-        Serial.printf("[ui] SD logging %s (probe on next hit)\n",
-                      cfg.sd_logging ? "ON" : "OFF");
+        // Persist + schedule probe on logger_tick (SD.begin is not safe here)
+        logger_set_enabled(!cfg.sd_logging);
         s_need_full = true;
-      } else if (hit(x, y, 16, 204, 64, 28)) {
+      } else if (hit(x, y, 8, 160, TFT_W - 16, 34)) {
+        toggle_invert();
+        s_need_full = true;
+      } else if (hit(x, y, 16, 232, 64, 28)) {
         radio_set_channel_plan(CHAN_PLAN_PRIMARY);
         s_need_full = true;
-      } else if (hit(x, y, 88, 204, 64, 28)) {
+      } else if (hit(x, y, 88, 232, 64, 28)) {
         radio_set_channel_plan(CHAN_PLAN_FULL);
         s_need_full = true;
-      } else if (hit(x, y, 160, 204, 64, 28)) {
+      } else if (hit(x, y, 160, 232, 64, 28)) {
         radio_set_channel_plan(CHAN_PLAN_ASC);
         s_need_full = true;
       }
@@ -725,6 +769,56 @@ void ui_spi_release_for_sd() {
   touchSPI.end();
 }
 
+// Panel lots can't be detected from the controller: invert happens after
+// GRAM, so readPixel() always returns what we wrote. First boot: show a
+// pure black half and a pure white half; the user taps whichever LOOKS
+// dark. That choice is stored in NVS for this board.
+static void run_panel_setup() {
+  tft.invertDisplay(false);
+  tft.fillScreen(TFT_BLACK);
+  tft.fillRect(0, 72, 120, 248, TFT_BLACK);
+  tft.fillRect(120, 72, 120, 248, TFT_WHITE);
+  tft.drawFastVLine(120, 72, 248, 0x8410);
+
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString("TAP THE DARK SIDE", TFT_W / 2, 22, 2);
+  tft.setTextColor(0x8410, TFT_BLACK);
+  tft.drawString("once per board — CYD panels differ", TFT_W / 2, 48, 1);
+
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString("A", 60, 180, 4);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
+  tft.drawString("B", 180, 180, 4);
+
+  uint32_t start = millis();
+  while (millis() - start < 500) {
+    (void)read_touch();
+    delay(20);
+  }
+  while (read_touch().pressed) delay(20);
+
+  for (;;) {
+    TouchPt t = read_touch();
+    if (t.pressed && t.y > 72) {
+      settings().invert_display = (t.x >= 120);
+      apply_invert();
+      save_invert();
+      Serial.printf("[ui] panel setup invert=%s tap=(%d,%d)\n",
+                    settings().invert_display ? "ON" : "OFF",
+                    (int)t.x, (int)t.y);
+      tft.fillScreen(C_BG);
+      tft.setTextDatum(MC_DATUM);
+      tft.setTextColor(C_ACCENT, C_BG);
+      tft.drawString("Display saved", TFT_W / 2, TFT_H / 2, 2);
+      delay(450);
+      while (read_touch().pressed) delay(20);
+      return;
+    }
+    delay(20);
+  }
+}
+
 void ui_spi_reclaim_after_sd() {
   // Put VSPI back on touch pins. Use the touch SPIClass only — do not call
   // ts.begin() again (that path has hung on some CYD boards).
@@ -744,7 +838,6 @@ void ui_init() {
 
   tft.init();
   tft.setRotation(0);  // portrait
-  tft.fillScreen(C_BG);
   tft.setTextFont(2);
 
   // Touch on dedicated VSPI pins
@@ -754,18 +847,28 @@ void ui_init() {
   ts.begin(touchSPI);
   ts.setRotation(0);
 
-  // Ignore phantom resistive presses during power-up
-  s_ignore_touch_until = millis() + 2000;
+  if (invert_calibrated()) {
+    load_invert();
+    apply_invert();
+  } else {
+    run_panel_setup();
+  }
+  Serial.printf("[ui] invert display %s\n",
+                settings().invert_display ? "ON" : "OFF");
+
+  // Ignore phantom resistive presses after setup / splash
+  s_ignore_touch_until = millis() + 1500;
   s_touch_guard = 0;
 
   // Splash
+  tft.fillScreen(C_BG);
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(C_ACCENT, C_BG);
   tft.drawString("GoFlockYourself", TFT_W / 2, 120, 4);
   tft.setTextColor(C_DIM, C_BG);
   tft.drawString("Passive Flock Detector", TFT_W / 2, 160, 2);
   tft.drawString("v" GFY_VERSION, TFT_W / 2, 185, 2);
-  delay(900);
+  delay(700);
 
   s_screen = SCR_HOME;
   s_need_full = true;

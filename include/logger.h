@@ -21,7 +21,11 @@ void logger_tick(uint32_t now);
 
 bool logger_sd_ok();
 bool logger_sd_present();
-const char *logger_sd_status();
+const char *logger_sd_status();       // short token: ready / none / format / error / off / idle
+const char *logger_sd_detail();       // human line for Alerts
+
+/** Persist ON/OFF and re-probe on enable. Safe while scanning. */
+void logger_set_enabled(bool on);
 
 /** Manual probe (Alerts menu). Prefer not to call during alert UI. */
 bool logger_sd_probe();

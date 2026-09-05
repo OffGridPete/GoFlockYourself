@@ -104,6 +104,7 @@ void detection_init() {
   s_cfg.ble_scan = DEF_BLE_SCAN;
   s_cfg.audio_alert = DEF_AUDIO_ALERT;
   s_cfg.led_alert = DEF_LED_ALERT;
+  s_cfg.invert_display = DEF_INVERT_DISPLAY;
   // logger_init() sets this true only when a card is actually present
   s_cfg.sd_logging = false;
   s_cfg.chan_plan = DEFAULT_CHAN_PLAN;

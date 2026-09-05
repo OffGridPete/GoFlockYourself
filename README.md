@@ -140,11 +140,20 @@ If `any` stays 0 for 15 s, RF is not receiving (antenna / init). Non-zero frames
 
 Path: `/gfy_log.csv`
 
-```
-millis,mac,oui,method,protocol,rssi,channel,confidence,label
-```
+A **FAT32** card is probed shortly after boot (deferred so touch stays alive). If the volume mounts, logging turns **on** automatically. The Alerts **SD logging** toggle is saved across reboots; you do **not** need to stop scanning to enable it.
 
-Toggle in **Alerts & Sensitivity**. Safe to leave the card empty if unused.
+| Home `SD:` | Meaning |
+|---|---|
+| `ready` | FAT32 card, logging on |
+| `off` | Card may be fine; logging toggled off (saved) |
+| `none` | No card |
+| `format` | Card present but not FAT32 (exFAT/NTFS/unformatted) |
+| `error` | Mounted but a write failed |
+| `idle` | Still checking |
+
+```
+millis,uptime_s,mac,oui,method,protocol,rssi,channel,confidence,label
+```
 
 ---
 
@@ -170,6 +179,14 @@ GoFlockYourself/
     logger.cpp            # Serial + SD
     hardware.cpp          # RGB + buzzer
 ```
+
+---
+
+## Display invert (CYD panel lots)
+
+Some ESP32-2432S028R batches invert colors, so the dark UI looks washed-out white. The controller cannot detect this (invert happens after the pixel buffer).
+
+On **first boot**, tap whichever half of the split screen looks **dark**. That choice is stored on the board. Change it later from **Main menu → Invert display** (also under Alerts).
 
 ---
 

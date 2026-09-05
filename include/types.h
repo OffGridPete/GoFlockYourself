@@ -60,6 +60,7 @@ struct Settings {
   bool audio_alert;
   bool led_alert;
   bool sd_logging;
+  bool invert_display;    // some CYD panel lots invert black/white
   uint8_t chan_plan;      // CHAN_PLAN_*
   uint16_t dwell_ms;
   int8_t  rssi_floor;

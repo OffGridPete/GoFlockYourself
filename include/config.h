@@ -13,7 +13,7 @@
 // Project identity
 // ---------------------------------------------------------------------------
 #define GFY_NAME            "GoFlockYourself"
-#define GFY_VERSION         "1.0.0"
+#define GFY_VERSION         "1.1.0"
 #define GFY_HW_NAME         "ESP32-2432S028R (CYD)"
 
 // ---------------------------------------------------------------------------
@@ -76,6 +76,9 @@
 #define DEF_BLE_SCAN        0   // off by default; radio stays on WiFi
 #define DEF_AUDIO_ALERT     1
 #define DEF_LED_ALERT       1
+// CYD panel lots disagree on invert. First boot asks "tap the dark side";
+// the choice is stored in NVS and can be changed from the main menu.
+#define DEF_INVERT_DISPLAY  0
 
 // Alert de-duplication
 #define ALERT_COOLDOWN_MS   4000UL   // same MAC won't re-alert within this window

@@ -15,9 +15,12 @@
 #include "logger.h"
 #include "config.h"
 #include "detection.h"
+#include "ui.h"
 
 #include <SD.h>
 #include <SPI.h>
+#include <Preferences.h>
+#include "sd_diskio.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -36,9 +39,15 @@ static uint8_t  s_q_head  = 0;
 static uint8_t  s_q_tail  = 0;
 static uint8_t  s_q_count = 0;
 
+enum SdErr : uint8_t { SDERR_OK = 0, SDERR_NONE, SDERR_FORMAT, SDERR_IO };
+
 static bool     s_sd_present = false;
 static bool     s_sd_ok      = false;
 static bool     s_probe_done = false;
+static bool     s_need_probe = false;
+static bool     s_user_set   = false;   // NVS: user explicitly toggled logging
+static SdErr    s_err        = SDERR_NONE;
+static uint32_t s_probe_after = 0;
 static uint32_t s_writes     = 0;
 static uint32_t s_write_fails = 0;
 static uint32_t s_log_bytes  = 0;
@@ -92,6 +101,76 @@ static void pins_idle() {
   digitalWrite(TOUCH_CS, HIGH);
 }
 
+static void bus_acquire() {
+  pins_idle();
+  if (s_release) s_release();
+  delay(5);
+  // end() first — SPIClass::begin() returns early when _spi is already set.
+  s_sd_spi.end();
+  s_sd_spi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+  delay(5);
+}
+
+static void bus_release() {
+  SD.end();
+  digitalWrite(SD_CS, HIGH);
+  delay(5);
+  if (s_reclaim) s_reclaim();
+}
+
+static void save_log_pref() {
+  Preferences p;
+  if (!p.begin("gfy", false)) return;
+  p.putBool("sdlog", settings().sd_logging);
+  p.putBool("sdlogset", true);
+  p.end();
+  s_user_set = true;
+}
+
+static void load_log_pref() {
+  Preferences p;
+  if (!p.begin("gfy", true)) return;
+  s_user_set = p.getBool("sdlogset", false);
+  if (s_user_set) {
+    settings().sd_logging = p.getBool("sdlog", false);
+  }
+  p.end();
+}
+
+// After SD.begin() fails the public API reports CARD_NONE. Re-init at the
+// diskio layer: if the card answers SPI but FAT mount failed, it's not FAT32
+// (typically exFAT/NTFS/unformatted).
+static SdErr classify_begin_fail() {
+  uint8_t pdrv = sdcard_init(SD_CS, &s_sd_spi, (int)SD_SPI_HZ);
+  if (pdrv == 0xFF) return SDERR_NONE;
+  sdcard_uninit(pdrv);
+  return SDERR_FORMAT;
+}
+
+static bool mount_sd() {
+  if (!SD.begin(SD_CS, s_sd_spi, SD_SPI_HZ)) {
+    s_err = classify_begin_fail();
+    s_sd_present = (s_err == SDERR_FORMAT);
+    s_sd_ok = false;
+    Serial.println(s_err == SDERR_FORMAT
+                       ? F("[log] card present but not FAT32")
+                       : F("[log] SD.begin failed (no card)"));
+    return false;
+  }
+  if (SD.cardType() == CARD_NONE) {
+    SD.end();
+    s_err = SDERR_NONE;
+    s_sd_present = false;
+    s_sd_ok = false;
+    Serial.println(F("[log] CARD_NONE"));
+    return false;
+  }
+  s_sd_present = true;
+  s_sd_ok = true;
+  s_err = SDERR_OK;
+  return true;
+}
+
 /**
  * Mount card, append exactly one line, unmount, restore touch.
  * Never truncates an existing file.
@@ -99,33 +178,11 @@ static void pins_idle() {
 static bool sd_append_one_line(const char *line) {
   if (!line || !line[0]) return false;
 
-  pins_idle();
-  if (s_release) s_release();
-  delay(5);
-
-  // Map VSPI to SD padout. end() first — SPIClass::begin() returns early when
-  // _spi is already set, so a bare begin() would not re-pin the bus.
-  s_sd_spi.end();
-  s_sd_spi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-  delay(5);
-
-  if (!SD.begin(SD_CS, s_sd_spi, SD_SPI_HZ)) {
-    Serial.println(F("[log] SD.begin failed"));
-    SD.end();
-    digitalWrite(SD_CS, HIGH);
-    if (s_reclaim) s_reclaim();
+  bus_acquire();
+  if (!mount_sd()) {
+    bus_release();
     return false;
   }
-
-  if (SD.cardType() == CARD_NONE) {
-    Serial.println(F("[log] CARD_NONE"));
-    SD.end();
-    digitalWrite(SD_CS, HIGH);
-    if (s_reclaim) s_reclaim();
-    return false;
-  }
-
-  s_sd_present = true;
 
   // If file missing or empty → write header via APPEND (not "w")
   bool need_header = true;
@@ -141,9 +198,9 @@ static bool sd_append_one_line(const char *line) {
   File f = SD.open(SD_LOG_PATH, SD_MODE_APPEND);
   if (!f) {
     Serial.println(F("[log] open(a) failed"));
-    SD.end();
-    digitalWrite(SD_CS, HIGH);
-    if (s_reclaim) s_reclaim();
+    s_err = SDERR_IO;
+    s_sd_ok = false;
+    bus_release();
     return false;
   }
 
@@ -161,20 +218,19 @@ static bool sd_append_one_line(const char *line) {
   f.flush();
   const uint32_t after = (uint32_t)f.size();
   f.close();
-
-  SD.end();
-  digitalWrite(SD_CS, HIGH);
-  delay(5);
-  if (s_reclaim) s_reclaim();
+  bus_release();
 
   if (n == 0 || after <= before) {
     Serial.printf("[log] write verify fail n=%u %lu→%lu\n",
                   (unsigned)n, (unsigned long)before, (unsigned long)after);
+    s_err = SDERR_IO;
+    s_sd_ok = false;
     return false;
   }
 
   s_log_bytes = after;
   s_sd_ok = true;
+  s_err = SDERR_OK;
   s_probe_done = true;
   s_writes++;
   Serial.printf("[log] APPEND ok #%lu +%uB total=%lu qleft=%u\n",
@@ -188,40 +244,48 @@ static bool sd_append_one_line(const char *line) {
 bool logger_sd_probe() {
 #if !ENABLE_SD_LOGGING
   s_probe_done = true;
+  s_need_probe = false;
   return false;
 #else
-  // Probe = try to append nothing critical; just check mount
-  pins_idle();
-  if (s_release) s_release();
-  delay(5);
-  s_sd_spi.end();
-  s_sd_spi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-  delay(5);
-  bool ok = SD.begin(SD_CS, s_sd_spi, SD_SPI_HZ);
-  if (ok && SD.cardType() != CARD_NONE) {
-    s_sd_present = true;
-    s_sd_ok = true;
-    if (SD.exists(SD_LOG_PATH)) {
-      File rf = SD.open(SD_LOG_PATH, SD_MODE_READ);
-      if (rf) {
-        s_log_bytes = (uint32_t)rf.size();
-        rf.close();
-      }
+  bus_acquire();
+  bool ok = mount_sd();
+  if (ok && SD.exists(SD_LOG_PATH)) {
+    File rf = SD.open(SD_LOG_PATH, SD_MODE_READ);
+    if (rf) {
+      s_log_bytes = (uint32_t)rf.size();
+      rf.close();
     }
+  }
+  bus_release();
+  s_probe_done = true;
+  s_need_probe = false;
+
+  if (!s_user_set) {
+    settings().sd_logging = ok;
+    Serial.printf("[log] auto logging %s\n", ok ? "ON" : "OFF");
+  } else {
+    Serial.printf("[log] probe done logging=%s (saved)\n",
+                  settings().sd_logging ? "ON" : "OFF");
+  }
+  if (ok) {
     Serial.printf("[log] probe OK existing_bytes=%lu\n",
                   (unsigned long)s_log_bytes);
-  } else {
-    s_sd_present = false;
-    s_sd_ok = false;
-    Serial.println(F("[log] probe: no card"));
   }
-  SD.end();
-  digitalWrite(SD_CS, HIGH);
-  delay(5);
-  if (s_reclaim) s_reclaim();
-  s_probe_done = true;
-  return s_sd_ok;
+  return ok;
 #endif
+}
+
+void logger_set_enabled(bool on) {
+  settings().sd_logging = on;
+  save_log_pref();
+  if (on) {
+    s_need_probe = true;
+    s_probe_after = millis();  // next tick, hot-plug friendly
+    s_backoff_until = 0;
+  } else {
+    s_q_head = s_q_tail = s_q_count = 0;
+  }
+  Serial.printf("[log] logging %s (saved)\n", on ? "ON" : "OFF");
 }
 
 void logger_init() {
@@ -231,14 +295,26 @@ void logger_init() {
 #if ENABLE_SD_LOGGING
   pinMode(SD_CS, OUTPUT);
   digitalWrite(SD_CS, HIGH);
-  settings().sd_logging = true;
+  settings().sd_logging = false;
+  s_user_set = false;
+  load_log_pref();
   s_probe_done = false;
+  s_need_probe = true;
+  s_probe_after = millis() + 1800;  // after splash / touch settle
   s_sd_ok = false;
+  s_err = SDERR_NONE;
   Serial.println(F("[log] SD writes deferred (queue) — safe with touch UI"));
   Serial.println(F("[log] append-only — existing gfy_log.csv never wiped"));
+  if (s_user_set) {
+    Serial.printf("[log] saved preference logging=%s\n",
+                  settings().sd_logging ? "ON" : "OFF");
+  } else {
+    Serial.println(F("[log] no saved preference — auto-enable if FAT32 card"));
+  }
 #else
   settings().sd_logging = false;
   s_probe_done = true;
+  s_need_probe = false;
 #endif
 }
 
@@ -248,14 +324,21 @@ void logger_tick(uint32_t now) {
   return;
 #else
   if (s_flushing) return;
+
+  if (s_need_probe && (int32_t)(now - s_probe_after) >= 0) {
+    s_flushing = true;
+    logger_sd_probe();
+    s_flushing = false;
+    ui_force_redraw();
+    return;
+  }
+
   if (s_q_count == 0) return;
   if (!settings().sd_logging) {
-    // Drop queue if user disabled logging
     s_q_head = s_q_tail = s_q_count = 0;
     return;
   }
   if ((int32_t)(now - s_backoff_until) < 0) return;
-  // Pace flushes so we never stall the UI for long bursts
   if (now - s_last_flush_ms < 300) return;
 
   s_flushing = true;
@@ -275,9 +358,9 @@ void logger_tick(uint32_t now) {
     s_write_fails++;
     s_sd_ok = false;
     s_probe_done = true;
-    // Back off so a bad card cannot freeze every loop
     s_backoff_until = now + 8000;
     Serial.println(F("[log] flush failed — backoff 8s (line kept in queue)"));
+    ui_force_redraw();
   }
 
   s_flushing = false;
@@ -291,12 +374,27 @@ const char *logger_sd_status() {
 #if !ENABLE_SD_LOGGING
   return "disabled";
 #else
-  if (s_q_count > 0 && !s_sd_ok) return "queue";
-  if (!s_probe_done && s_q_count == 0) return "idle";
+  if (!s_probe_done) return "idle";
+  if (s_err == SDERR_FORMAT) return "format";
+  if (s_err == SDERR_IO) return "error";
+  if (!settings().sd_logging) return "off";
   if (s_sd_ok) return "ready";
-  if (s_sd_present) return "error";
   if (s_q_count > 0) return "queue";
   return "none";
+#endif
+}
+
+const char *logger_sd_detail() {
+#if !ENABLE_SD_LOGGING
+  return "SD compiled out";
+#else
+  if (!s_probe_done) return "Checking card...";
+  if (s_err == SDERR_FORMAT) return "Card: not FAT32 (exFAT/NTFS)";
+  if (s_err == SDERR_IO) return "Card: write error";
+  if (!s_sd_present) return "Card: not inserted";
+  if (!settings().sd_logging) return "Card: ready (logging off)";
+  if (s_sd_ok) return "Card: FAT32 ready";
+  return "Card: error";
 #endif
 }
 
@@ -328,6 +426,10 @@ void logger_log_hit(const DetectEvent &ev) {
   return;
 #else
   if (!settings().sd_logging) return;
+  if (s_probe_done && !s_sd_ok) {
+    Serial.println(F("[log] SD not usable — hit not queued"));
+    return;
+  }
 
   // Sanitize label
   char lab[24];

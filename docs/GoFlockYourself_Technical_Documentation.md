@@ -322,7 +322,7 @@ Compact flags for enabled methods (OUI, WILD, BLE, …)
 Frames
 Total frames seen (proves the radio is alive)
 SD:status
-microSD state: ready / none / error
+microSD state: ready / off / none / format / error / idle
 HITS / UNIQUE
 Total alerted events vs unique MACs in history
 Last detection
@@ -617,12 +617,14 @@ Passive Flock Safety Camera Detector
 ESP32-2432S028R (CYD)
 8. Logging & microSD Card
 8.1 Enabling Logging
-At boot the firmware probes the onboard microSD slot. If a readable card is found, logging is turned ON automatically
-and the Home screen shows SD:ready. You can also toggle SD logging under Alerts & Sensitivity. Turning it on
-re-probes the slot (hot-plug friendly).
+Shortly after boot (after the UI is up, so the shared SPI bus does not freeze touch) the firmware probes the onboard
+microSD slot. If a readable FAT32 volume is found and the user has not previously turned logging off, logging turns
+ON automatically and the Home screen shows SD:ready. The Alerts SD logging toggle is persisted in NVS across
+reboots. Turning it on re-probes the slot (hot-plug friendly) and does not require stopping the scan.
 Format requirement
 The microSD card must be formatted as FAT32. exFAT/NTFS are not supported by the Arduino SD stack used
-here. Cards that are empty or newly purchased should be formatted FAT32 on a computer before first use.
+here. Cards that are empty or newly purchased should be formatted FAT32 on a computer before first use. A card
+that answers SPI but has no FAT volume shows SD:format in red on Home and a “not FAT32” line on Alerts.
 8.2 Log Location and Format
 File path on the card: /gfy_log.csv (appears as gfy_log.csv in the card root on a desktop OS).
 Header row:
@@ -659,6 +661,7 @@ boot millis, not wall clock unless you note start time).
  Use reputable name-brand cards; tiny/no-name cards fail more often on SPI buses.
  Eject safely from the OS after copying; avoid pulling the card during a write.
  If Home shows SD:none, reseat the card and toggle SD logging or reboot.
+ If Home shows SD:format, reformat the card FAT32 (not exFAT) on a computer and reinsert.
 
 
 ---
